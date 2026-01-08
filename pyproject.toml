@@ -1,0 +1,54 @@
+[project]
+name = "face-blur"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.128.0",
+    "httpx>=0.27.0",
+    "numpy>=2.4.0",
+    "opencv-python-headless>=4.11.0.86",
+    "pydantic-settings>=2.3.0",
+    "python-multipart>=0.0.9",
+    "slowapi>=0.1.9",
+    "taskiq>=0.12.1",
+    "taskiq-aio-pika",
+    "taskiq-redis",
+    "streamlit>=1.36.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["face_blur*"]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "mypy>=1.10.0",
+    "pytest>=8.2.0",
+    "ruff>=0.5.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py313"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
