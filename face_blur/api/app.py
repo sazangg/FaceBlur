@@ -28,11 +28,9 @@ logger = logging.getLogger("face_blur.api")
 class BrokerProtocol(Protocol):
     result_backend: Any
 
-    async def startup(self) -> None:
-        ...
+    async def startup(self) -> None: ...
 
-    async def shutdown(self) -> None:
-        ...
+    async def shutdown(self) -> None: ...
 
 
 TaskSubmitter = Callable[[list[dict[str, Any]]], Awaitable[Any]]
