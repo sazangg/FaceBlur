@@ -3,7 +3,6 @@ import streamlit as st
 
 from face_blur.core.config import settings
 
-
 BACKEND_URL = settings.backend_url
 
 
@@ -38,7 +37,10 @@ uploads = st.file_uploader(
 
 if uploads and st.button("Submit for blurring"):
     files_payload = [
-        ("files", (upload.name, upload.getvalue(), upload.type or "application/octet-stream"))
+        (
+            "files",
+            (upload.name, upload.getvalue(), upload.type or "application/octet-stream"),
+        )
         for upload in uploads
     ]
     response = httpx.post(f"{BACKEND_URL}/blur", files=files_payload, timeout=30)

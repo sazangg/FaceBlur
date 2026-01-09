@@ -1,6 +1,5 @@
 from face_blur.services.blur_service import process_image_blur
 
-
 if __name__ == "__main__":
     with open(".examples/sample_img.jpg", "rb") as f:
         image_bytes = f.read()
