@@ -7,16 +7,23 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from face_blur.api.errors import AppError
 from face_blur.api.limiter import limiter
+from face_blur.api.metrics import BLUR_ERRORS, REQUEST_COUNT, REQUEST_LATENCY
 from face_blur.api.responses import ok
 from face_blur.api.routes import router
 from face_blur.core.config import settings
 from face_blur.core.logging import configure_logging
+from face_blur.stats.store import (
+    increment_stat_async,
+    init_db_async,
+    record_visitor_async,
+)
 from face_blur.storage.cleanup import cleanup_loop
 from face_blur.workers.taskiq_app import broker as default_broker
 from face_blur.workers.tasks import blur_images
@@ -43,6 +50,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await broker_instance.startup()
+        await init_db_async(settings.stats_db_path)
         stop_event = asyncio.Event()
         app.state.cleanup_stop = stop_event
         if settings.storage_cleanup_interval_minutes > 0:
@@ -74,9 +82,35 @@ def create_app(
     @app.middleware("http")
     async def request_logger(request: Request, call_next):
         request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+        visitor_cookie = settings.visitor_cookie_name
+        visitor_id = request.cookies.get(visitor_cookie)
+        new_visitor = False
+        if not visitor_id:
+            visitor_id = str(uuid.uuid4())
+            new_visitor = True
         start_time = time.perf_counter()
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start_time) * 1000
+        route = request.scope.get("route")
+        path = route.path if route is not None else request.url.path
+        REQUEST_COUNT.labels(
+            method=request.method,
+            path=path,
+            status=str(response.status_code),
+        ).inc()
+        REQUEST_LATENCY.labels(method=request.method, path=path).observe(
+            duration_ms / 1000
+        )
+        await increment_stat_async(settings.stats_db_path, "total_requests")
+        if new_visitor:
+            await record_visitor_async(settings.stats_db_path, visitor_id)
+            response.set_cookie(
+                visitor_cookie,
+                visitor_id,
+                max_age=settings.visitor_cookie_max_age_days * 24 * 60 * 60,
+                httponly=True,
+                samesite="lax",
+            )
         logger.info(
             (
                 "request_complete method=%s path=%s status=%s "
@@ -93,12 +127,14 @@ def create_app(
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError):
+        BLUR_ERRORS.labels(code=exc.code).inc()
         return exc.to_response()
 
     @app.exception_handler(HTTPException)
     async def http_error_handler(request: Request, exc: HTTPException):
         payload = ok(message=exc.detail, status="error")
         payload["code"] = "http_error"
+        BLUR_ERRORS.labels(code="http_error").inc()
         return JSONResponse(status_code=exc.status_code, content=payload)
 
     @app.exception_handler(RequestValidationError)
@@ -106,6 +142,7 @@ def create_app(
         payload = ok(message="Request validation failed.", status="error")
         payload["code"] = "validation_error"
         payload["details"] = {"errors": exc.errors()}
+        BLUR_ERRORS.labels(code="validation_error").inc()
         return JSONResponse(status_code=422, content=payload)
 
     @app.exception_handler(RateLimitExceeded)
@@ -114,7 +151,12 @@ def create_app(
             message="Rate limit exceeded. Please try again later.", status="error"
         )
         payload["code"] = "rate_limited"
+        BLUR_ERRORS.labels(code="rate_limited").inc()
         return JSONResponse(status_code=429, content=payload)
+
+    @app.get("/metrics")
+    async def metrics():
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     return app
 

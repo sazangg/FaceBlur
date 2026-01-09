@@ -11,6 +11,9 @@ def _set_env_defaults():
     os.environ.setdefault("BLUR_RATE_LIMIT", "100/minute")
     os.environ.setdefault("STORAGE_TTL_MINUTES", "60")
     os.environ.setdefault("STORAGE_CLEANUP_INTERVAL_MINUTES", "0")
+    os.environ.setdefault("STATS_DB_PATH", "storage/test_stats.db")
+    os.environ.setdefault("VISITOR_COOKIE_NAME", "visitor_id")
+    os.environ.setdefault("VISITOR_COOKIE_MAX_AGE_DAYS", "365")
 
 
 _set_env_defaults()

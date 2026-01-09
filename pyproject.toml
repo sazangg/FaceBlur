@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=2.4.0",
     "opencv-python-headless>=4.11.0.86",
     "pydantic-settings>=2.3.0",
+    "prometheus-client>=0.20.0",
     "python-multipart>=0.0.9",
     "slowapi>=0.1.9",
     "taskiq>=0.12.1",

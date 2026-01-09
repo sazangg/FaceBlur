@@ -37,6 +37,9 @@ Copy `.env.example` to `.env` and set the environment variables:
 - `STORAGE_TTL_MINUTES`: Age threshold for background cleanup of stored files.
 - `STORAGE_CLEANUP_INTERVAL_MINUTES`: How often the background cleanup runs (set to 0 to disable).
 - `LOG_LEVEL`: Logging level (e.g. `INFO`).
+- `STATS_DB_PATH`: SQLite file used for vanity stats (e.g. `storage/stats.db`).
+- `VISITOR_COOKIE_NAME`: Cookie name used to identify repeat visitors.
+- `VISITOR_COOKIE_MAX_AGE_DAYS`: Cookie max age in days.
 
 Where to get connection strings
 - Local via Docker Compose (recommended for dev): run `docker compose up -d` to start RabbitMQ and Redis, then use:
@@ -48,6 +51,16 @@ Run dependencies (RabbitMQ + Redis)
 ```
 docker compose up -d
 ```
+
+Monitoring (Prometheus + Grafana)
+```
+docker compose up -d prometheus grafana
+```
+
+Prometheus will scrape `http://localhost:8000/metrics` via `host.docker.internal`.
+Grafana is available at `http://localhost:3000` (admin/admin).
+Grafana auto-provisions the Prometheus data source.
+Import the dashboard in `monitoring/grafana-dashboard.json`.
 
 Run the API
 ```
@@ -71,10 +84,15 @@ API Endpoints
 - `GET /health`: health check for the backend.
 - `POST /blur`: upload one or more images (multipart form field `files`).
 - `GET /results/{task_id}`: poll for results; returns image or zip, or 202 while pending.
+- `GET /metrics`: Prometheus metrics endpoint.
+- `GET /stats`: vanity stats from SQLite.
 
 Response format
 - Success payloads return `{ "status": "...", "message": "...", "data": { ... } }`.
 - Error payloads return `{ "status": "error", "code": "...", "message": "...", "details": { ... } }`.
+
+Vanity stats
+- Visitor counting uses a cookie id; deleting cookies may reduce accuracy.
 
 Cleanup behavior
 - Processed images are written to `STORAGE_DIR` by the worker and deleted after they are returned by `/results/{task_id}`.

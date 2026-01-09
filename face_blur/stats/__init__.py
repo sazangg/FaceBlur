@@ -1,0 +1,1 @@
+"""Persistent vanity stats storage."""

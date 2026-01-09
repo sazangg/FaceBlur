@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     storage_ttl_minutes: int = Field(default=60, ge=1)
     storage_cleanup_interval_minutes: int = Field(default=30, ge=0)
     log_level: str = Field(default="INFO")
+    stats_db_path: str = Field(default="stats.db")
+    visitor_cookie_name: str = Field(default="visitor_id")
+    visitor_cookie_max_age_days: int = Field(default=365, ge=1)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

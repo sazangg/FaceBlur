@@ -17,9 +17,11 @@ from face_blur.api.errors import (
     ValidationError,
 )
 from face_blur.api.limiter import limiter
+from face_blur.api.metrics import BLUR_RESULTS_SERVED, BLUR_TASKS_SUBMITTED
 from face_blur.api.responses import ok
 from face_blur.api.schemas import ErrorResponse, QueuedResponse, SuccessResponse
 from face_blur.core.config import settings
+from face_blur.stats.store import get_stats_async, increment_stat_async
 from face_blur.storage.filesystem import cleanup_paths, read_bytes
 
 router = APIRouter()
@@ -134,6 +136,8 @@ async def submit_blur(request: Request, files: list[UploadFile] = File(...)):
         )
 
     task = await request.app.state.task_submitter(_encode_uploads(uploads))
+    BLUR_TASKS_SUBMITTED.inc()
+    await increment_stat_async(settings.stats_db_path, "total_tasks")
     return ok(
         message=f"Queued {len(uploads)} image(s) for processing.",
         status="queued",
@@ -170,15 +174,24 @@ async def fetch_result(request: Request, task_id: str):
         raise ResultPayloadMissingError("Task result payload is missing.")
 
     items = _load_results(return_value)
+    await increment_stat_async(settings.stats_db_path, "total_images", len(items))
     cleanup_paths([item["path"] for item in items])
 
     if len(items) == 1:
         item = items[0]
+        BLUR_RESULTS_SERVED.labels(type="single").inc()
         return Response(content=item["bytes"], media_type=item["content_type"])
 
     archive = _zip_results(items)
+    BLUR_RESULTS_SERVED.labels(type="zip").inc()
     return Response(
         content=archive,
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="blurred_images.zip"'},
     )
+
+
+@router.get("/stats", response_model=SuccessResponse)
+async def stats():
+    data = await get_stats_async(settings.stats_db_path)
+    return ok(message="Stats loaded.", data=data)
