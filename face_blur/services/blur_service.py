@@ -56,11 +56,14 @@ def _apply_pixelated_ellipse(img, x, y, w, h, block=10):
     small_h = max(1, h // block)
     small = cv2.resize(roi, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
     pixelated = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
+    sigma = max(2.0, min(w, h) / 30.0)
+    softened = cv2.GaussianBlur(pixelated, (0, 0), sigmaX=sigma, sigmaY=sigma)
+    pixelated = cv2.addWeighted(pixelated, 0.6, softened, 0.4, 0)
 
     # Draw an ellipse mask to create rounded edges.
     mask = np.zeros((h, w), dtype=np.uint8)
     center = (w // 2, h // 2)
-    axes = (max(1, int(w * 0.48)), max(1, int(h * 0.58)))
+    axes = (max(1, int(w * 0.52)), max(1, int(h * 0.62)))
     cv2.ellipse(mask, center, axes, 0, 0, 360, (255,), -1)
 
     # Composite pixelated face into the original ROI using the mask.
@@ -120,7 +123,16 @@ def process_image_blur(image_bytes: bytes):
     faces = _merge_overlaps(faces)
 
     for x, y, w, h in faces:
-        _apply_pixelated_ellipse(img, x, y, w, h, block=12)
+        pad_x = int(w * 0.2)
+        pad_y = int(h * 0.2)
+        x0 = max(0, x - pad_x)
+        y0 = max(0, y - pad_y)
+        x1 = min(img.shape[1], x + w + pad_x)
+        y1 = min(img.shape[0], y + h + pad_y)
+        adjusted_w = max(1, x1 - x0)
+        adjusted_h = max(1, y1 - y0)
+        block = max(12, min(adjusted_w, adjusted_h) // 8)
+        _apply_pixelated_ellipse(img, x0, y0, adjusted_w, adjusted_h, block=block)
 
     _, buffer = cv2.imencode(".jpg", img)  # Encode result to JPEG bytes.
     return buffer.tobytes()

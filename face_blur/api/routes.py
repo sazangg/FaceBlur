@@ -1,5 +1,6 @@
 import base64
 import io
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -21,7 +22,11 @@ from face_blur.api.metrics import BLUR_RESULTS_SERVED, BLUR_TASKS_SUBMITTED
 from face_blur.api.responses import ok
 from face_blur.api.schemas import ErrorResponse, QueuedResponse, SuccessResponse
 from face_blur.core.config import settings
-from face_blur.stats.store import get_stats_async, increment_stat_async
+from face_blur.stats.store import (
+    get_stats_async,
+    increment_stat_async,
+    record_visitor_async,
+)
 from face_blur.storage.filesystem import cleanup_paths, read_bytes
 
 router = APIRouter()
@@ -116,6 +121,11 @@ async def health():
 async def submit_blur(request: Request, files: list[UploadFile] = File(...)):
     if not files:
         raise ValidationError("No files uploaded.")
+    if len(files) > settings.max_upload_files:
+        raise ValidationError(
+            "Too many files uploaded.",
+            details={"max_files": settings.max_upload_files},
+        )
 
     uploads = []
     for file in files:
@@ -192,6 +202,21 @@ async def fetch_result(request: Request, task_id: str):
 
 
 @router.get("/stats", response_model=SuccessResponse)
-async def stats():
+async def stats(request: Request):
+    visitor_cookie = settings.visitor_cookie_name
+    visitor_id = request.cookies.get(visitor_cookie)
+    if not visitor_id:
+        visitor_id = str(uuid.uuid4())
+        await record_visitor_async(settings.stats_db_path, visitor_id)
     data = await get_stats_async(settings.stats_db_path)
-    return ok(message="Stats loaded.", data=data)
+    response = JSONResponse(content=ok(message="Stats loaded.", data=data))
+    if visitor_id and not request.cookies.get(visitor_cookie):
+        response.set_cookie(
+            visitor_cookie,
+            visitor_id,
+            max_age=settings.visitor_cookie_max_age_days * 24 * 60 * 60,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+    return response

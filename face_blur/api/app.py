@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable, Protocol
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -19,11 +20,7 @@ from face_blur.api.responses import ok
 from face_blur.api.routes import router
 from face_blur.core.config import settings
 from face_blur.core.logging import configure_logging
-from face_blur.stats.store import (
-    increment_stat_async,
-    init_db_async,
-    record_visitor_async,
-)
+from face_blur.stats.store import increment_stat_async, init_db_async
 from face_blur.storage.cleanup import cleanup_loop
 from face_blur.workers.taskiq_app import broker as default_broker
 from face_blur.workers.tasks import blur_images
@@ -76,23 +73,26 @@ def create_app(
     app.state.limiter = limiter
     app.state.broker = broker_instance
     app.state.task_submitter = task_submitter or blur_images.kiq
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allow_origins_list(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.add_middleware(SlowAPIMiddleware)
     app.include_router(router)
 
     @app.middleware("http")
     async def request_logger(request: Request, call_next):
         request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
-        visitor_cookie = settings.visitor_cookie_name
-        visitor_id = request.cookies.get(visitor_cookie)
-        new_visitor = False
-        if not visitor_id:
-            visitor_id = str(uuid.uuid4())
-            new_visitor = True
+        request_path = request.url.path
+        count_request = request_path == "/blur"
         start_time = time.perf_counter()
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start_time) * 1000
         route = request.scope.get("route")
-        path = route.path if route is not None else request.url.path
+        path = route.path if route is not None else request_path
         REQUEST_COUNT.labels(
             method=request.method,
             path=path,
@@ -101,16 +101,8 @@ def create_app(
         REQUEST_LATENCY.labels(method=request.method, path=path).observe(
             duration_ms / 1000
         )
-        await increment_stat_async(settings.stats_db_path, "total_requests")
-        if new_visitor:
-            await record_visitor_async(settings.stats_db_path, visitor_id)
-            response.set_cookie(
-                visitor_cookie,
-                visitor_id,
-                max_age=settings.visitor_cookie_max_age_days * 24 * 60 * 60,
-                httponly=True,
-                samesite="lax",
-            )
+        if count_request:
+            await increment_stat_async(settings.stats_db_path, "total_requests")
         logger.info(
             (
                 "request_complete method=%s path=%s status=%s "

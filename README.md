@@ -1,11 +1,12 @@
 Face Blur Service
 
 Overview
-This project blurs faces in images, exposes a FastAPI backend with Taskiq + RabbitMQ/Redis for background processing, and includes a Streamlit UI for testing. The backend is organized in a simple layered structure (API, services, workers, storage).
+This project blurs faces in images, exposes a FastAPI backend with Taskiq + RabbitMQ/Redis for background processing, and includes a React + Vite frontend. A Streamlit demo app lives in `demo/` for quick testing. The backend is organized in a simple layered structure (API, services, workers, storage).
 
 Project layout
 - `face_blur/`: backend code (API, services, workers, storage).
-- `frontend/`: UI clients (Streamlit now, React/Vite later).
+- `frontend/`: React + Vite frontend (Tailwind v4 + shadcn/ui).
+- `demo/`: Streamlit demo app.
 
 Quality checks
 - `ruff check .`
@@ -40,6 +41,7 @@ Copy `.env.example` to `.env` and set the environment variables:
 - `STATS_DB_PATH`: SQLite file used for vanity stats (e.g. `storage/stats.db`).
 - `VISITOR_COOKIE_NAME`: Cookie name used to identify repeat visitors.
 - `VISITOR_COOKIE_MAX_AGE_DAYS`: Cookie max age in days.
+- `CORS_ALLOW_ORIGINS`: Comma-separated list of allowed frontend origins.
 
 Where to get connection strings
 - Local via Docker Compose (recommended for dev): run `docker compose up -d` to start RabbitMQ and Redis, then use:
@@ -74,7 +76,14 @@ taskiq worker face_blur.workers.taskiq_app:broker
 
 Run the Streamlit app
 ```
-streamlit run frontend/streamlit_app.py
+streamlit run demo/streamlit_app.py
+```
+
+Run the React app
+```
+cd frontend
+pnpm install
+pnpm dev
 ```
 
 Note
@@ -93,6 +102,7 @@ Response format
 
 Vanity stats
 - Visitor counting uses a cookie id; deleting cookies may reduce accuracy.
+- `total_requests` tracks blur requests (`POST /blur`), not every endpoint call.
 
 Cleanup behavior
 - Processed images are written to `STORAGE_DIR` by the worker and deleted after they are returned by `/results/{task_id}`.

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     storage_dir: str = Field(default="")
     allowed_extensions: str = Field(default="")
     max_upload_mb: int = Field(default=25, ge=1)
+    max_upload_files: int = Field(default=10, ge=1)
     blur_rate_limit: str = Field(default="10/minute")
     storage_ttl_minutes: int = Field(default=60, ge=1)
     storage_cleanup_interval_minutes: int = Field(default=30, ge=0)
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
     stats_db_path: str = Field(default="stats.db")
     visitor_cookie_name: str = Field(default="visitor_id")
     visitor_cookie_max_age_days: int = Field(default=365, ge=1)
+    cors_allow_origins: str = Field(default="http://localhost:5173")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -43,6 +45,14 @@ class Settings(BaseSettings):
 
     def max_upload_bytes(self):
         return int(self.max_upload_mb) * 1024 * 1024
+
+    def cors_allow_origins_list(self):
+        origins = [
+            origin.strip()
+            for origin in self.cors_allow_origins.split(",")
+            if origin.strip()
+        ]
+        return origins or ["http://localhost:5173"]
 
 
 settings = Settings()
