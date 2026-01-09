@@ -5,7 +5,7 @@ from pathlib import Path
 from face_blur.core.config import settings
 from face_blur.services.blur_service import process_image_blur
 from face_blur.storage.filesystem import ensure_dir, write_bytes
-from face_blur.workers.taskiq_app import broker
+from face_blur.workers.broker import broker
 
 
 def _safe_output_name(filename: str, index: int):

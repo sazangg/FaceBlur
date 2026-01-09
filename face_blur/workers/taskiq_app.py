@@ -1,9 +1,6 @@
-from taskiq_aio_pika import AioPikaBroker
-from taskiq_redis import RedisAsyncResultBackend
+"""Taskiq broker entrypoint used by the worker CLI."""
 
-from face_blur.core.config import settings
 from face_blur.workers import tasks  # noqa: F401
+from face_blur.workers.broker import broker
 
-broker = AioPikaBroker(settings.rabbitmq_url).with_result_backend(
-    RedisAsyncResultBackend(settings.redis_url)
-)
+__all__ = ["broker"]
