@@ -2,7 +2,7 @@ import { StatusIndicator } from "@/components/status-indicator"
 import { Button } from "@/components/ui/button"
 import linksData from "@/data/links.json"
 
-import type { VanityStats } from "@/types"
+import type { QueueStatus, VanityStats } from "@/types"
 
 type Links = {
   name: string
@@ -14,6 +14,8 @@ type Links = {
 type AppFooterProps = {
   stats: VanityStats | null
   statsError: string | null
+  queue: QueueStatus | null
+  queueError: string | null
   backendHealthy: boolean | null
 }
 
@@ -37,7 +39,13 @@ const LinkedInIcon = () => (
   </svg>
 )
 
-const AppFooter = ({ stats, statsError, backendHealthy }: AppFooterProps) => {
+const AppFooter = ({
+  stats,
+  statsError,
+  queue,
+  queueError,
+  backendHealthy,
+}: AppFooterProps) => {
   return (
     <footer className="mt-6 w-full border-t text-xs text-muted-foreground">
       <div className="w-full px-6 py-3">
@@ -46,6 +54,8 @@ const AppFooter = ({ stats, statsError, backendHealthy }: AppFooterProps) => {
             backendHealthy={backendHealthy}
             stats={stats}
             statsError={statsError}
+            queue={queue}
+            queueError={queueError}
           />
 
           <div className="flex items-center justify-center gap-2">

@@ -9,8 +9,18 @@ const apiFetch = (path: string, options?: RequestInit) =>
 
 const parseErrorMessage = async (response: Response) => {
   try {
-    const data = (await response.json()) as { message?: string }
-    return data?.message || response.statusText
+    const data = (await response.json()) as {
+      message?: string
+      details?: { suggestion?: string }
+    }
+    if (!data) {
+      return response.statusText
+    }
+    const base = data.message || response.statusText
+    if (data.details?.suggestion) {
+      return `${base} ${data.details.suggestion}`
+    }
+    return base
   } catch {
     return response.statusText || "Request failed."
   }

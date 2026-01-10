@@ -15,6 +15,7 @@ const useBlurWorkflow = () => {
   const [taskId, setTaskId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectionError, setSelectionError] = useState<string | null>(null)
+  const [videoDuration, setVideoDuration] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const parsePositiveInt = (value: string | undefined, fallback: number) => {
@@ -23,6 +24,14 @@ const useBlurWorkflow = () => {
       return fallback
     }
     return Math.floor(parsed)
+  }
+
+  const parsePositiveFloat = (value: string | undefined, fallback: number) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return fallback
+    }
+    return parsed
   }
 
   const parseExtensions = (value: string | undefined, fallback: string[]) => {
@@ -44,6 +53,15 @@ const useBlurWorkflow = () => {
   const maxUploadBytes = maxUploadMb * 1024 * 1024
   const maxVideoMb = parsePositiveInt(import.meta.env.VITE_MAX_VIDEO_MB, 50)
   const maxVideoBytes = maxVideoMb * 1024 * 1024
+  const maxVideoFps = parsePositiveInt(import.meta.env.VITE_VIDEO_MAX_FPS, 20)
+  const detectEveryN = parsePositiveInt(
+    import.meta.env.VITE_VIDEO_DETECT_EVERY_N,
+    4
+  )
+  const etaUnitsPerSecond = parsePositiveFloat(
+    import.meta.env.VITE_VIDEO_ETA_UNITS_PER_SEC,
+    6
+  )
   const allowedExtensions = parseExtensions(
     import.meta.env.VITE_ALLOWED_EXTENSIONS,
     ["jpg", "jpeg", "png", "webp", "bmp", "gif", "tif", "tiff"]
@@ -61,6 +79,16 @@ const useBlurWorkflow = () => {
   const isVideoFile = (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
     return ext && allowedVideoExtensionsSet.has(ext)
+  }
+
+  const formatDuration = (value: number) => {
+    const totalSeconds = Math.max(0, Math.round(value))
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    if (minutes === 0) {
+      return `${seconds}s`
+    }
+    return `${minutes}m ${seconds.toString().padStart(2, "0")}s`
   }
 
   const isBusy = status === "uploading" || status === "processing"
@@ -84,6 +112,33 @@ const useBlurWorkflow = () => {
       resultPreviews.forEach((preview) => URL.revokeObjectURL(preview.url))
     }
   }, [resultPreviews])
+
+  useEffect(() => {
+    let cancelled = false
+    if (files.length === 1 && isVideoFile(files[0])) {
+      const file = files[0]
+      const url = URL.createObjectURL(file)
+      const video = document.createElement("video")
+      video.preload = "metadata"
+      video.onloadedmetadata = () => {
+        if (cancelled) return
+        setVideoDuration(Number.isFinite(video.duration) ? video.duration : null)
+        URL.revokeObjectURL(url)
+      }
+      video.onerror = () => {
+        if (cancelled) return
+        setVideoDuration(null)
+        URL.revokeObjectURL(url)
+      }
+      video.src = url
+    } else {
+      setVideoDuration(null)
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [files])
 
   const handleFiles = (incoming: FileList | File[]) => {
     if (isBusy) return
@@ -157,6 +212,17 @@ const useBlurWorkflow = () => {
     setResultPreviews([])
     setErrorMessage(null)
   }
+
+  const etaHint = useMemo(() => {
+    if (!videoDuration) return null
+    const estimatedFrames = Math.max(1, Math.ceil(videoDuration * maxVideoFps))
+    const detectionPasses = Math.ceil(estimatedFrames / detectEveryN)
+    const workUnits = estimatedFrames + detectionPasses
+    const etaSeconds = Math.ceil(workUnits / etaUnitsPerSecond)
+    return `ETA (rough): ~${formatDuration(etaSeconds)} for a ${formatDuration(
+      videoDuration
+    )} video.`
+  }, [detectEveryN, maxVideoFps, videoDuration])
 
   const resetAll = () => {
     if (isBusy) return
@@ -331,6 +397,7 @@ const useBlurWorkflow = () => {
     allowedExtensions,
     allowedVideoExtensions,
     acceptExtensions,
+    etaHint,
     handleFiles,
     resetAll,
     startProcessing,

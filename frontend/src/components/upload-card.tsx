@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Status } from "@/types"
 
 type UploadCardProps = {
@@ -27,6 +28,7 @@ type UploadCardProps = {
   allowedVideoExtensions: string[]
   acceptExtensions: string
   selectionError: string | null
+  etaHint: string | null
   onFilesSelected: (files: FileList | File[]) => void
   onStart: () => void
   onReset: () => void
@@ -45,6 +47,7 @@ const UploadCard = ({
   allowedVideoExtensions,
   acceptExtensions,
   selectionError,
+  etaHint,
   onFilesSelected,
   onStart,
   onReset,
@@ -75,12 +78,26 @@ const UploadCard = ({
         <CardTitle>Upload media</CardTitle>
         <CardDescription>
           Drag and drop or select images or a single video.
-          <span className="block text-xs text-muted-foreground">
-            Up to {maxFiles} images, {maxUploadMb} MB each, or 1 video up to{" "}
-            {maxVideoMb} MB. Accepted images: {allowedExtensions.join(", ")}.
-            {allowedVideoExtensions.length > 0 && (
-              <> Videos: {allowedVideoExtensions.join(", ")}.</>
-            )}
+          <span className="mt-1 block text-xs text-muted-foreground">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="cursor-help underline decoration-dashed underline-offset-2">
+                  Limits & accepted types
+                </span>
+              </TooltipTrigger>
+              <TooltipContent align="start" className="max-w-xs text-xs">
+                <div className="space-y-1">
+                  <div>
+                    Up to {maxFiles} images, {maxUploadMb} MB each.
+                  </div>
+                  <div>1 video up to {maxVideoMb} MB.</div>
+                  <div>Images: {allowedExtensions.join(", ")}.</div>
+                  {allowedVideoExtensions.length > 0 && (
+                    <div>Videos: {allowedVideoExtensions.join(", ")}.</div>
+                  )}
+                </div>
+              </TooltipContent>
+            </Tooltip>
           </span>
         </CardDescription>
       </CardHeader>
@@ -136,6 +153,9 @@ const UploadCard = ({
           </span>
         </div>
         <SelectedFilesSummary files={files} />
+        {etaHint && (
+          <span className="text-xs text-muted-foreground">{etaHint}</span>
+        )}
         {selectionError && (
           <Alert variant="destructive" className="py-2">
             <AlertDescription className="text-xs">

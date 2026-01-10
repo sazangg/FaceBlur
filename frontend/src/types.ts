@@ -18,3 +18,10 @@ export type VanityStats = {
   total_videos: number
   total_video_seconds: number
 }
+
+export type QueueStatus = {
+  queued: number
+  consumers: number
+  available?: boolean
+  error?: string
+}

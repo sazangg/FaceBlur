@@ -1,11 +1,13 @@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { VanityStats } from "@/types"
+import type { QueueStatus, VanityStats } from "@/types"
 
 type StatusIndicatorProps = {
   backendHealthy: boolean | null
   stats?: VanityStats | null
   statsError?: string | null
+  queue?: QueueStatus | null
+  queueError?: string | null
 }
 
 const MIN_COUNTER_WIDTH = 6
@@ -19,6 +21,8 @@ const StatusIndicator = ({
   backendHealthy,
   stats,
   statsError,
+  queue,
+  queueError,
 }: StatusIndicatorProps) => {
   const statusLabel =
     backendHealthy === true
@@ -50,45 +54,68 @@ const StatusIndicator = ({
       )
     : MIN_COUNTER_WIDTH
 
-  const tooltipContent = stats ? (
-    <div className="space-y-2 text-xs">
-      <div className="text-muted-foreground">Stats</div>
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-6">
-          <span>Visitors</span>
-          <span className="font-mono tabular-nums">
-            {formatCounter(stats.total_visitors ?? 0, counterWidth)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-6">
-          <span>Images blurred</span>
-          <span className="font-mono tabular-nums">
-            {formatCounter(stats.total_images ?? 0, counterWidth)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-6">
-          <span>Blur requests</span>
-          <span className="font-mono tabular-nums">
-            {formatCounter(stats.total_requests ?? 0, counterWidth)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-6">
-          <span>Videos blurred</span>
-          <span className="font-mono tabular-nums">
-            {formatCounter(stats.total_videos ?? 0, counterWidth)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-6">
-          <span>Video seconds</span>
-          <span className="font-mono tabular-nums">
-            {formatCounter(stats.total_video_seconds ?? 0, counterWidth)}
-          </span>
-        </div>
+  const tooltipContent = (
+    <div className="space-y-3 text-xs">
+      <div className="space-y-2">
+        <div className="text-muted-foreground">Stats</div>
+        {stats ? (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-6">
+              <span>Visitors</span>
+              <span className="font-mono tabular-nums">
+                {formatCounter(stats.total_visitors ?? 0, counterWidth)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-6">
+              <span>Images blurred</span>
+              <span className="font-mono tabular-nums">
+                {formatCounter(stats.total_images ?? 0, counterWidth)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-6">
+              <span>Blur requests</span>
+              <span className="font-mono tabular-nums">
+                {formatCounter(stats.total_requests ?? 0, counterWidth)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-6">
+              <span>Videos blurred</span>
+              <span className="font-mono tabular-nums">
+                {formatCounter(stats.total_videos ?? 0, counterWidth)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-6">
+              <span>Video seconds</span>
+              <span className="font-mono tabular-nums">
+                {formatCounter(stats.total_video_seconds ?? 0, counterWidth)}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div>{statsError ? statsError : "Stats loading..."}</div>
+        )}
       </div>
-    </div>
-  ) : (
-    <div className="text-xs">
-      {statsError ? statsError : "Stats loading..."}
+      <div className="space-y-2">
+        <div className="text-muted-foreground">Queue</div>
+        {queue ? (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-6">
+              <span>Jobs ahead</span>
+              <span className="font-mono tabular-nums">
+                {formatCounter(queue.queued ?? 0, counterWidth)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-6">
+              <span>Workers</span>
+              <span className="font-mono tabular-nums">
+                {formatCounter(queue.consumers ?? 0, counterWidth)}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div>{queueError ? queueError : "Queue loading..."}</div>
+        )}
+      </div>
     </div>
   )
 

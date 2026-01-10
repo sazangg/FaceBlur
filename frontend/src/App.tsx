@@ -5,11 +5,13 @@ import { ResultsCard } from "@/components/results-card"
 import { UploadCard } from "@/components/upload-card"
 import { useBlurWorkflow } from "@/hooks/useBlurWorkflow"
 import { useHealth } from "@/hooks/useHealth"
+import { useQueue } from "@/hooks/useQueue"
 import { useStats } from "@/hooks/useStats"
 import { API_BASE_URL } from "@/lib/api"
 
 function App() {
   const backendHealthy = useHealth()
+  const { queue, queueError } = useQueue()
   const { stats, statsError } = useStats()
   const {
     files,
@@ -28,6 +30,7 @@ function App() {
     allowedExtensions,
     allowedVideoExtensions,
     acceptExtensions,
+    etaHint,
     handleFiles,
     resetAll,
     startProcessing,
@@ -54,6 +57,7 @@ function App() {
               allowedVideoExtensions={allowedVideoExtensions}
               acceptExtensions={acceptExtensions}
               selectionError={selectionError}
+              etaHint={etaHint}
               onFilesSelected={handleFiles}
               onStart={startProcessing}
               onReset={resetAll}
@@ -92,6 +96,8 @@ function App() {
         <AppFooter
           stats={stats}
           statsError={statsError}
+          queue={queue}
+          queueError={queueError}
           backendHealthy={backendHealthy}
         />
       </div>
