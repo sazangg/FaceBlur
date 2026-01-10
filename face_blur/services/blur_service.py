@@ -73,55 +73,99 @@ def _apply_pixelated_ellipse(img, x, y, w, h, block=10):
     img[y : y + h, x : x + w] = cv2.add(bg, masked)
 
 
-def process_image_blur(image_bytes: bytes):
-    """Decode bytes, detect faces, and return a blurred JPEG payload."""
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)  # Decode bytes into a BGR image.
-    if img is None:
-        raise ValueError("Could not decode image bytes")
+class FaceDetector:
+    """Load and reuse Haar cascades across multiple frames."""
 
-    cascade_path = cv_data.haarcascades + "haarcascade_frontalface_default.xml"
-    face_cascade = cv2.CascadeClassifier(cascade_path)  # Load frontal face cascade.
-    if face_cascade.empty():
-        raise FileNotFoundError(f"Missing cascade: {cascade_path}")
-    alt_cascade_path = cv_data.haarcascades + "haarcascade_frontalface_alt2.xml"
-    alt_face_cascade = cv2.CascadeClassifier(alt_cascade_path)
-    if alt_face_cascade.empty():
-        raise FileNotFoundError(f"Missing cascade: {alt_cascade_path}")
-    profile_cascade = cv2.CascadeClassifier(
-        cv_data.haarcascades + "haarcascade_profileface.xml"
-    )
-    if profile_cascade.empty():
-        raise FileNotFoundError(
-            f"Missing cascade: {cv_data.haarcascades}haarcascade_profileface.xml"
+    def __init__(self):
+        cascade_path = cv_data.haarcascades + "haarcascade_frontalface_default.xml"
+        self.face_cascade = cv2.CascadeClassifier(cascade_path)
+        if self.face_cascade.empty():
+            raise FileNotFoundError(f"Missing cascade: {cascade_path}")
+        alt_cascade_path = cv_data.haarcascades + "haarcascade_frontalface_alt2.xml"
+        self.alt_face_cascade = cv2.CascadeClassifier(alt_cascade_path)
+        if self.alt_face_cascade.empty():
+            raise FileNotFoundError(f"Missing cascade: {alt_cascade_path}")
+        profile_path = cv_data.haarcascades + "haarcascade_profileface.xml"
+        self.profile_cascade = cv2.CascadeClassifier(profile_path)
+        if self.profile_cascade.empty():
+            raise FileNotFoundError(f"Missing cascade: {profile_path}")
+
+    def detect(self, gray, equalized):
+        params = [
+            {"scaleFactor": 1.1, "minNeighbors": 5, "minSize": (30, 30)},
+            {"scaleFactor": 1.05, "minNeighbors": 3, "minSize": (24, 24)},
+        ]
+        faces = _detect_faces(
+            [gray, equalized],
+            [self.face_cascade, self.alt_face_cascade, self.profile_cascade],
+            params,
         )
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # Haar cascades expect grayscale.
-    equalized = cv2.equalizeHist(gray)  # Boost contrast for tougher side angles.
-    params = [
-        {"scaleFactor": 1.1, "minNeighbors": 5, "minSize": (30, 30)},
-        {"scaleFactor": 1.05, "minNeighbors": 3, "minSize": (24, 24)},
-    ]
-    faces = _detect_faces(
-        [gray, equalized],
-        [face_cascade, alt_face_cascade, profile_cascade],
-        params,
-    )
+        flipped_gray = cv2.flip(gray, 1)
+        flipped_equalized = cv2.flip(equalized, 1)
+        flipped_faces = _detect_faces(
+            [flipped_gray, flipped_equalized],
+            [self.profile_cascade],
+            [{"scaleFactor": 1.05, "minNeighbors": 3, "minSize": (24, 24)}],
+        )
+        width = gray.shape[1]
+        for x, y, w, h in flipped_faces:
+            faces.append((width - x - w, y, w, h))
 
-    # Flip image to detect both left/right profiles with a single cascade.
-    flipped_gray = cv2.flip(gray, 1)
-    flipped_equalized = cv2.flip(equalized, 1)
-    flipped_faces = _detect_faces(
-        [flipped_gray, flipped_equalized],
-        [profile_cascade],
-        [{"scaleFactor": 1.05, "minNeighbors": 3, "minSize": (24, 24)}],
-    )
-    width = gray.shape[1]
-    for x, y, w, h in flipped_faces:
-        faces.append((width - x - w, y, w, h))
+        return _merge_overlaps(faces)
 
-    faces = _merge_overlaps(faces)
 
+_DETECTOR: FaceDetector | None = None
+
+
+def _get_detector():
+    global _DETECTOR
+    if _DETECTOR is None:
+        _DETECTOR = FaceDetector()
+    return _DETECTOR
+
+
+def _detect_faces_in_frame(img: np.ndarray, scale: float = 1.0):
+    """Detect faces on a possibly downscaled frame and return boxes in original scale."""
+    if img is None:
+        raise ValueError("Could not decode image bytes")
+    detector = _get_detector()
+    if scale < 1.0:
+        height, width = img.shape[:2]
+        resized = cv2.resize(
+            img,
+            (max(1, int(width * scale)), max(1, int(height * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+    else:
+        resized = img
+
+    gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+    equalized = cv2.equalizeHist(gray)
+    faces = detector.detect(gray, equalized)
+    if scale < 1.0:
+        inv_scale = 1.0 / scale
+        faces = [
+            (
+                int(x * inv_scale),
+                int(y * inv_scale),
+                int(w * inv_scale),
+                int(h * inv_scale),
+            )
+            for (x, y, w, h) in faces
+        ]
+    return faces
+
+
+def detect_faces(img: np.ndarray, scale: float = 1.0):
+    """Detect faces on a frame and return bounding boxes."""
+    return _detect_faces_in_frame(img, scale=scale)
+
+
+def apply_blur(img: np.ndarray, faces):
+    """Apply blur to a frame using precomputed face boxes."""
+    if not faces:
+        return img
     for x, y, w, h in faces:
         pad_x = int(w * 0.2)
         pad_y = int(h * 0.2)
@@ -134,5 +178,22 @@ def process_image_blur(image_bytes: bytes):
         block = max(12, min(adjusted_w, adjusted_h) // 8)
         _apply_pixelated_ellipse(img, x0, y0, adjusted_w, adjusted_h, block=block)
 
-    _, buffer = cv2.imencode(".jpg", img)  # Encode result to JPEG bytes.
+    return img
+
+
+def blur_frame(img: np.ndarray, detect_scale: float = 1.0):
+    """Blur detected faces on a BGR frame in-place and return it."""
+    faces = _detect_faces_in_frame(img, scale=detect_scale)
+    return apply_blur(img, faces)
+
+
+def process_image_blur(image_bytes: bytes):
+    """Decode bytes, detect faces, and return a blurred JPEG payload."""
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)  # Decode bytes into a BGR image.
+    if img is None:
+        raise ValueError("Could not decode image bytes")
+
+    blurred = blur_frame(img)
+    _, buffer = cv2.imencode(".jpg", blurred)  # Encode result to JPEG bytes.
     return buffer.tobytes()

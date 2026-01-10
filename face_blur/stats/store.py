@@ -7,6 +7,8 @@ DEFAULT_KEYS = (
     "total_requests",
     "total_tasks",
     "total_images",
+    "total_videos",
+    "total_video_seconds",
     "total_visitors",
 )
 

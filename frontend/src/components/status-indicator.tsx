@@ -42,9 +42,11 @@ const StatusIndicator = ({
   const counterWidth = stats
     ? Math.max(
         MIN_COUNTER_WIDTH,
-        stats.total_visitors.toString().length,
-        stats.total_images.toString().length,
-        stats.total_requests.toString().length
+        (stats.total_visitors ?? 0).toString().length,
+        (stats.total_images ?? 0).toString().length,
+        (stats.total_requests ?? 0).toString().length,
+        (stats.total_videos ?? 0).toString().length,
+        (stats.total_video_seconds ?? 0).toString().length
       )
     : MIN_COUNTER_WIDTH
 
@@ -55,19 +57,31 @@ const StatusIndicator = ({
         <div className="flex items-center justify-between gap-6">
           <span>Visitors</span>
           <span className="font-mono tabular-nums">
-            {formatCounter(stats.total_visitors, counterWidth)}
+            {formatCounter(stats.total_visitors ?? 0, counterWidth)}
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
           <span>Images blurred</span>
           <span className="font-mono tabular-nums">
-            {formatCounter(stats.total_images, counterWidth)}
+            {formatCounter(stats.total_images ?? 0, counterWidth)}
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
           <span>Blur requests</span>
           <span className="font-mono tabular-nums">
-            {formatCounter(stats.total_requests, counterWidth)}
+            {formatCounter(stats.total_requests ?? 0, counterWidth)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span>Videos blurred</span>
+          <span className="font-mono tabular-nums">
+            {formatCounter(stats.total_videos ?? 0, counterWidth)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span>Video seconds</span>
+          <span className="font-mono tabular-nums">
+            {formatCounter(stats.total_video_seconds ?? 0, counterWidth)}
           </span>
         </div>
       </div>

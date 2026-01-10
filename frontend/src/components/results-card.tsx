@@ -44,6 +44,7 @@ const ResultsCard = ({
     useState<ResultPreview | null>(null)
   const [carouselApi, setCarouselApi] = useState<CarouselApi | null>(null)
   const [showCarouselControls, setShowCarouselControls] = useState(false)
+  const isVideo = resultPreviews[0]?.type === "video"
 
   useEffect(() => {
     if (!carouselApi) return
@@ -60,6 +61,12 @@ const ResultsCard = ({
     }
   }, [carouselApi])
 
+  useEffect(() => {
+    if (isVideo) {
+      setSelectedPreview(null)
+    }
+  }, [isVideo, resultPreviews])
+
   if (!resultPreviews.length) {
     return null
   }
@@ -70,13 +77,23 @@ const ResultsCard = ({
         <CardHeader>
           <CardTitle>Results</CardTitle>
           <CardDescription>
-            {resultPreviews.length === 1
-              ? "Single image result."
-              : "Swipe through your blurred images."}
+            {isVideo
+              ? "Video result ready."
+              : resultPreviews.length === 1
+                ? "Single image result."
+                : "Swipe through your blurred images."}
           </CardDescription>
         </CardHeader>
         <CardContent className="h-72">
-          {resultPreviews.length === 1 ? (
+          {isVideo ? (
+            <div className="flex h-full items-center justify-center">
+              <video
+                controls
+                src={resultPreviews[0].url}
+                className="h-full w-full rounded-md border object-contain"
+              />
+            </div>
+          ) : resultPreviews.length === 1 ? (
             <div className="flex h-full items-center justify-center">
               <Button
                 type="button"
@@ -136,31 +153,37 @@ const ResultsCard = ({
             onClick={onDownload}
             disabled={downloadBusy || !download || isBusy}
           >
-            {resultPreviews.length === 1 ? "Download image" : "Download zip"}
+            {isVideo
+              ? "Download video"
+              : resultPreviews.length === 1
+                ? "Download image"
+                : "Download zip"}
           </Button>
         </CardFooter>
       </Card>
 
-      <Dialog
-        open={Boolean(selectedPreview)}
-        onOpenChange={(open) => {
-          if (!open) setSelectedPreview(null)
-        }}
-      >
-        <DialogContent className="w-fit max-w-[90vw] place-items-center p-4 sm:max-w-[90vw]">
-          <DialogTitle className="sr-only">Blurred image preview</DialogTitle>
-          <DialogDescription className="sr-only">
-            Full-size preview of the selected blurred image.
-          </DialogDescription>
-          {selectedPreview && (
-            <img
-              src={selectedPreview.url}
-              alt={selectedPreview.name}
-              className="max-h-[70vh] w-auto max-w-[85vw] object-contain"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {!isVideo && (
+        <Dialog
+          open={Boolean(selectedPreview)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedPreview(null)
+          }}
+        >
+          <DialogContent className="w-fit max-w-[90vw] place-items-center p-4 sm:max-w-[90vw]">
+            <DialogTitle className="sr-only">Blurred image preview</DialogTitle>
+            <DialogDescription className="sr-only">
+              Full-size preview of the selected blurred image.
+            </DialogDescription>
+            {selectedPreview && (
+              <img
+                src={selectedPreview.url}
+                alt={selectedPreview.name}
+                className="max-h-[70vh] w-auto max-w-[85vw] object-contain"
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   )
 }

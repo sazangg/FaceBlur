@@ -22,7 +22,9 @@ type UploadCardProps = {
   fileInputRef: RefObject<HTMLInputElement | null>
   maxFiles: number
   maxUploadMb: number
+  maxVideoMb: number
   allowedExtensions: string[]
+  allowedVideoExtensions: string[]
   acceptExtensions: string
   selectionError: string | null
   onFilesSelected: (files: FileList | File[]) => void
@@ -38,7 +40,9 @@ const UploadCard = ({
   fileInputRef,
   maxFiles,
   maxUploadMb,
+  maxVideoMb,
   allowedExtensions,
+  allowedVideoExtensions,
   acceptExtensions,
   selectionError,
   onFilesSelected,
@@ -68,12 +72,15 @@ const UploadCard = ({
       onDrop={handleDrop}
     >
       <CardHeader>
-        <CardTitle>Upload images</CardTitle>
+        <CardTitle>Upload media</CardTitle>
         <CardDescription>
-          Drag and drop or select one or more images.
+          Drag and drop or select images or a single video.
           <span className="block text-xs text-muted-foreground">
-            Up to {maxFiles} images, {maxUploadMb} MB each. Accepted:{" "}
-            {allowedExtensions.join(", ")}.
+            Up to {maxFiles} images, {maxUploadMb} MB each, or 1 video up to{" "}
+            {maxVideoMb} MB. Accepted images: {allowedExtensions.join(", ")}.
+            {allowedVideoExtensions.length > 0 && (
+              <> Videos: {allowedVideoExtensions.join(", ")}.</>
+            )}
           </span>
         </CardDescription>
       </CardHeader>
@@ -117,7 +124,7 @@ const UploadCard = ({
                 {status === "uploading" ? "Uploading" : "Blurring"}
               </>
             ) : (
-              "Blur images"
+              "Blur media"
             )}
           </Button>
           <span

@@ -7,8 +7,8 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -23,7 +23,7 @@ from face_blur.core.logging import configure_logging
 from face_blur.stats.store import increment_stat_async, init_db_async
 from face_blur.storage.cleanup import cleanup_loop
 from face_blur.workers.taskiq_app import broker as default_broker
-from face_blur.workers.tasks import blur_images
+from face_blur.workers.tasks import blur_images, blur_videos
 
 configure_logging()
 logger = logging.getLogger("face_blur.api")
@@ -73,6 +73,7 @@ def create_app(
     app.state.limiter = limiter
     app.state.broker = broker_instance
     app.state.task_submitter = task_submitter or blur_images.kiq
+    app.state.video_task_submitter = blur_videos.kiq
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins_list(),
@@ -87,7 +88,7 @@ def create_app(
     async def request_logger(request: Request, call_next):
         request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
         request_path = request.url.path
-        count_request = request_path == "/blur"
+        count_request = request_path in {"/blur", "/blur/video"}
         start_time = time.perf_counter()
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start_time) * 1000

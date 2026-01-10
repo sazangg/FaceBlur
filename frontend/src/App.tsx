@@ -24,7 +24,9 @@ function App() {
     fileInputRef,
     maxFiles,
     maxUploadMb,
+    maxVideoMb,
     allowedExtensions,
+    allowedVideoExtensions,
     acceptExtensions,
     handleFiles,
     resetAll,
@@ -47,7 +49,9 @@ function App() {
               fileInputRef={fileInputRef}
               maxFiles={maxFiles}
               maxUploadMb={maxUploadMb}
+              maxVideoMb={maxVideoMb}
               allowedExtensions={allowedExtensions}
+              allowedVideoExtensions={allowedVideoExtensions}
               acceptExtensions={acceptExtensions}
               selectionError={selectionError}
               onFilesSelected={handleFiles}

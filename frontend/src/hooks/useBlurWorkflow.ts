@@ -42,18 +42,32 @@ const useBlurWorkflow = () => {
   )
   const maxUploadMb = parsePositiveInt(import.meta.env.VITE_MAX_UPLOAD_MB, 25)
   const maxUploadBytes = maxUploadMb * 1024 * 1024
+  const maxVideoMb = parsePositiveInt(import.meta.env.VITE_MAX_VIDEO_MB, 50)
+  const maxVideoBytes = maxVideoMb * 1024 * 1024
   const allowedExtensions = parseExtensions(
     import.meta.env.VITE_ALLOWED_EXTENSIONS,
     ["jpg", "jpeg", "png", "webp", "bmp", "gif", "tif", "tiff"]
   )
+  const allowedVideoExtensions = parseExtensions(
+    import.meta.env.VITE_ALLOWED_VIDEO_EXTENSIONS,
+    ["mp4", "webm", "mov", "mkv"]
+  )
   const allowedExtensionsSet = new Set(allowedExtensions)
-  const acceptExtensions = allowedExtensions.map((ext) => `.${ext}`).join(",")
+  const allowedVideoExtensionsSet = new Set(allowedVideoExtensions)
+  const acceptExtensions = [...allowedExtensions, ...allowedVideoExtensions]
+    .map((ext) => `.${ext}`)
+    .join(",")
+
+  const isVideoFile = (file: File) => {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+    return ext && allowedVideoExtensionsSet.has(ext)
+  }
 
   const isBusy = status === "uploading" || status === "processing"
   const statusMessage = useMemo(() => {
     switch (status) {
       case "uploading":
-        return "Uploading images..."
+        return "Uploading media..."
       case "processing":
         return "Blurring in worker..."
       case "ready":
@@ -61,7 +75,7 @@ const useBlurWorkflow = () => {
       case "error":
         return "Something went wrong."
       default:
-        return files.length ? "Ready to blur." : "Select images to start."
+        return files.length ? "Ready to blur." : "Select media to start."
     }
   }, [files.length, status])
 
@@ -73,27 +87,33 @@ const useBlurWorkflow = () => {
 
   const handleFiles = (incoming: FileList | File[]) => {
     if (isBusy) return
-    const next = Array.from(incoming).filter((file) =>
-      file.type.startsWith("image/")
-    )
-    const invalidExtensions = next.filter((file) => {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
-      return !ext || !allowedExtensionsSet.has(ext)
-    })
-    const validByExtension = next.filter((file) => {
+    const next = Array.from(incoming)
+    const imageFiles = next.filter((file) => {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
       return ext && allowedExtensionsSet.has(ext)
     })
-    const oversized = validByExtension.filter(
-      (file) => file.size > maxUploadBytes
-    )
-    let accepted = validByExtension.filter(
-      (file) => file.size <= maxUploadBytes
-    )
-    const exceededLimit = accepted.length > maxFiles
+    const videoFiles = next.filter((file) => {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+      return ext && allowedVideoExtensionsSet.has(ext)
+    })
+    const invalidExtensions = next.filter((file) => {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+      return (
+        !ext ||
+        (!allowedExtensionsSet.has(ext) && !allowedVideoExtensionsSet.has(ext))
+      )
+    })
+    const oversizedImages = imageFiles.filter((file) => file.size > maxUploadBytes)
+    const oversizedVideos = videoFiles.filter((file) => file.size > maxVideoBytes)
+
+    let acceptedImages = imageFiles.filter((file) => file.size <= maxUploadBytes)
+    const exceededLimit = acceptedImages.length > maxFiles
     if (exceededLimit) {
-      accepted = accepted.slice(0, maxFiles)
+      acceptedImages = acceptedImages.slice(0, maxFiles)
     }
+    const acceptedVideos = videoFiles.filter(
+      (file) => file.size <= maxVideoBytes
+    )
 
     const messages: string[] = []
     if (invalidExtensions.length > 0) {
@@ -101,14 +121,33 @@ const useBlurWorkflow = () => {
         `${invalidExtensions.length} file(s) have unsupported extensions.`
       )
     }
-    if (oversized.length > 0) {
+    if (oversizedImages.length > 0) {
       messages.push(
-        `${oversized.length} file(s) exceed ${maxUploadMb} MB and were skipped.`
+        `${oversizedImages.length} file(s) exceed ${maxUploadMb} MB and were skipped.`
+      )
+    }
+    if (oversizedVideos.length > 0) {
+      messages.push(
+        `${oversizedVideos.length} video(s) exceed ${maxVideoMb} MB and were skipped.`
       )
     }
     if (exceededLimit) {
       messages.push(`Only ${maxFiles} images can be uploaded at once.`)
     }
+    if (acceptedVideos.length > 1) {
+      messages.push("Only one video can be uploaded at a time.")
+    }
+
+    let accepted: File[] = []
+    if (acceptedVideos.length > 0) {
+      accepted = [acceptedVideos[0]]
+      if (acceptedImages.length > 0) {
+        messages.push("Images were skipped because a video was selected.")
+      }
+    } else {
+      accepted = acceptedImages
+    }
+
     setSelectionError(messages.length ? messages.join(" ") : null)
     setFiles(accepted)
     setStatus("idle")
@@ -142,12 +181,18 @@ const useBlurWorkflow = () => {
     setResultPreviews([])
 
     const payload = new FormData()
-    for (const file of files) {
-      payload.append("files", file)
+    const isVideo = files.length === 1 && isVideoFile(files[0])
+    if (isVideo) {
+      payload.append("file", files[0])
+    } else {
+      for (const file of files) {
+        payload.append("files", file)
+      }
     }
 
     try {
-      const response = await apiFetch("/blur", {
+      const endpoint = isVideo ? "/blur/video" : "/blur"
+      const response = await apiFetch(endpoint, {
         method: "POST",
         body: payload,
       })
@@ -223,13 +268,27 @@ const useBlurWorkflow = () => {
             images.push({
               name,
               url: URL.createObjectURL(imageBlob),
+              type: "image",
             })
           }
           setResultPreviews(images)
         } else if (contentType.startsWith("image/")) {
           setDownload({ blob, filename: "blurred_image.jpg" })
           setResultPreviews([
-            { name: "blurred_image.jpg", url: URL.createObjectURL(blob) },
+            {
+              name: "blurred_image.jpg",
+              url: URL.createObjectURL(blob),
+              type: "image",
+            },
+          ])
+        } else if (contentType.startsWith("video/")) {
+          setDownload({ blob, filename: "blurred_video.mp4" })
+          setResultPreviews([
+            {
+              name: "blurred_video.mp4",
+              url: URL.createObjectURL(blob),
+              type: "video",
+            },
           ])
         } else {
           setStatus("error")
@@ -268,7 +327,9 @@ const useBlurWorkflow = () => {
     fileInputRef,
     maxFiles,
     maxUploadMb,
+    maxVideoMb,
     allowedExtensions,
+    allowedVideoExtensions,
     acceptExtensions,
     handleFiles,
     resetAll,

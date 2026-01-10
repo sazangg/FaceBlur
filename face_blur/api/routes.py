@@ -1,9 +1,11 @@
 import base64
 import io
+import tempfile
 import uuid
 import zipfile
 from pathlib import Path
 
+import cv2
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from taskiq_redis.exceptions import ResultIsMissingError
@@ -18,13 +20,20 @@ from face_blur.api.errors import (
     ValidationError,
 )
 from face_blur.api.limiter import limiter
-from face_blur.api.metrics import BLUR_RESULTS_SERVED, BLUR_TASKS_SUBMITTED
+from face_blur.api.metrics import (
+    BLUR_RESULTS_SERVED,
+    BLUR_TASKS_SUBMITTED,
+    VIDEO_DURATION_SECONDS,
+    VIDEO_RESULTS_SERVED,
+    VIDEO_TASKS_SUBMITTED,
+)
 from face_blur.api.responses import ok
 from face_blur.api.schemas import ErrorResponse, QueuedResponse, SuccessResponse
 from face_blur.core.config import settings
 from face_blur.stats.store import (
     get_stats_async,
     increment_stat_async,
+    increment_stats_async,
     record_visitor_async,
 )
 from face_blur.storage.filesystem import cleanup_paths, read_bytes
@@ -42,6 +51,19 @@ def _validate_extension(filename: str):
         allowed_list = ", ".join(sorted(allowed))
         raise UnsupportedMediaTypeError(
             f"Unsupported file type '.{extension}'. Allowed: {allowed_list}."
+        )
+
+
+def _validate_video_extension(filename: str):
+    """Validate video file extension against allowlist."""
+    extension = Path(filename).suffix.lower().lstrip(".")
+    if not extension:
+        raise ValidationError("File extension is required.")
+    allowed = settings.allowed_video_extensions_set()
+    if extension not in allowed:
+        allowed_list = ", ".join(sorted(allowed))
+        raise UnsupportedMediaTypeError(
+            f"Unsupported video type '.{extension}'. Allowed: {allowed_list}."
         )
 
 
@@ -78,6 +100,32 @@ def _load_results(items):
             }
         )
     return results
+
+
+def _load_video_result(item):
+    """Load a blurred video file from disk for response."""
+    path = Path(item["path"])
+    if not path.exists():
+        raise ResultMissingError("Processed video is missing.")
+    return {
+        "filename": item["filename"],
+        "content_type": item.get("content_type") or "video/mp4",
+        "bytes": read_bytes(path),
+        "path": str(path),
+        "duration_seconds": item.get("duration_seconds"),
+    }
+
+
+def _video_duration_seconds(path: Path):
+    cap = cv2.VideoCapture(str(path))
+    if not cap.isOpened():
+        raise ValidationError("Unable to read video file.")
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    cap.release()
+    if fps <= 0 or frame_count <= 0:
+        return 0
+    return frame_count / fps
 
 
 def _zip_results(items):
@@ -155,6 +203,66 @@ async def submit_blur(request: Request, files: list[UploadFile] = File(...)):
     )
 
 
+@router.post(
+    "/blur/video",
+    response_model=QueuedResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        413: {"model": ErrorResponse},
+        415: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+    },
+)
+@limiter.limit(settings.blur_rate_limit)
+async def submit_blur_video(request: Request, file: UploadFile = File(...)):
+    if not file:
+        raise ValidationError("No video uploaded.")
+
+    filename = file.filename or "upload"
+    _validate_video_extension(filename)
+    data = await file.read()
+    if len(data) > settings.max_video_bytes():
+        raise PayloadTooLargeError(
+            "Uploaded video exceeds size limit.",
+            details={"max_mb": settings.max_video_mb, "filename": filename},
+        )
+
+    suffix = Path(filename).suffix
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_file.write(data)
+        temp_path = Path(temp_file.name)
+
+    try:
+        duration = _video_duration_seconds(temp_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+    if duration and duration > settings.max_video_seconds:
+        raise ValidationError(
+            "Uploaded video exceeds duration limit.",
+            details={
+                "max_seconds": settings.max_video_seconds,
+                "duration_seconds": round(duration, 2),
+            },
+        )
+
+    uploads = [
+        {
+            "filename": filename,
+            "content_type": file.content_type or "video/mp4",
+            "bytes": data,
+        }
+    ]
+    task = await request.app.state.video_task_submitter(_encode_uploads(uploads))
+    VIDEO_TASKS_SUBMITTED.inc()
+    await increment_stat_async(settings.stats_db_path, "total_tasks")
+    return ok(
+        message="Queued video for processing.",
+        status="queued",
+        data={"task_id": task.task_id},
+    )
+
+
 @router.get(
     "/results/{task_id}",
     responses={
@@ -175,7 +283,14 @@ async def fetch_result(request: Request, task_id: str):
         )
 
     if getattr(result, "is_err", False):
-        raise TaskFailedError("Task failed while blurring faces.")
+        error = getattr(result, "error", None)
+        details = None
+        if error is not None:
+            details = {
+                "type": error.__class__.__name__,
+                "message": str(error),
+            }
+        raise TaskFailedError("Task failed while blurring faces.", details=details)
 
     return_value = getattr(result, "return_value", None)
     if return_value is None and isinstance(result, dict):
@@ -183,22 +298,57 @@ async def fetch_result(request: Request, task_id: str):
     if not return_value:
         raise ResultPayloadMissingError("Task result payload is missing.")
 
-    items = _load_results(return_value)
-    await increment_stat_async(settings.stats_db_path, "total_images", len(items))
-    cleanup_paths([item["path"] for item in items])
+    if isinstance(return_value, list) and return_value:
+        if return_value[0].get("type") == "video":
+            item = _load_video_result(return_value[0])
+            VIDEO_RESULTS_SERVED.inc()
+            duration_seconds = item.get("duration_seconds")
+            if duration_seconds:
+                VIDEO_DURATION_SECONDS.inc(duration_seconds)
+            await increment_stats_async(
+                settings.stats_db_path,
+                {
+                    "total_videos": 1,
+                    "total_video_seconds": int(round(duration_seconds or 0)),
+                },
+            )
+            cleanup_paths([item["path"]])
+            return Response(content=item["bytes"], media_type=item["content_type"])
 
-    if len(items) == 1:
-        item = items[0]
-        BLUR_RESULTS_SERVED.labels(type="single").inc()
+        items = _load_results(return_value)
+        await increment_stat_async(settings.stats_db_path, "total_images", len(items))
+        cleanup_paths([item["path"] for item in items])
+
+        if len(items) == 1:
+            item = items[0]
+            BLUR_RESULTS_SERVED.labels(type="single").inc()
+            return Response(content=item["bytes"], media_type=item["content_type"])
+
+        archive = _zip_results(items)
+        BLUR_RESULTS_SERVED.labels(type="zip").inc()
+        return Response(
+            content=archive,
+            media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="blurred_images.zip"'},
+        )
+
+    if isinstance(return_value, dict) and return_value.get("type") == "video":
+        item = _load_video_result(return_value)
+        VIDEO_RESULTS_SERVED.inc()
+        duration_seconds = item.get("duration_seconds")
+        if duration_seconds:
+            VIDEO_DURATION_SECONDS.inc(duration_seconds)
+        await increment_stats_async(
+            settings.stats_db_path,
+            {
+                "total_videos": 1,
+                "total_video_seconds": int(round(duration_seconds or 0)),
+            },
+        )
+        cleanup_paths([item["path"]])
         return Response(content=item["bytes"], media_type=item["content_type"])
 
-    archive = _zip_results(items)
-    BLUR_RESULTS_SERVED.labels(type="zip").inc()
-    return Response(
-        content=archive,
-        media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="blurred_images.zip"'},
-    )
+    raise ResultPayloadMissingError("Task result payload is missing.")
 
 
 @router.get("/stats", response_model=SuccessResponse)
