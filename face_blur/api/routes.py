@@ -97,7 +97,7 @@ def _sniff_media(data: bytes):
         if brand == b"qt  ":
             return ("video", "mov")
         return ("video", "mp4")
-    if header.startswith(b"\x1A\x45\xDF\xA3"):
+    if header.startswith(b"\x1a\x45\xdf\xa3"):
         doc = data[:128].lower()
         if b"webm" in doc:
             return ("video", "webm")
@@ -271,7 +271,9 @@ async def submit_blur(request: Request, files: list[UploadFile] = File(...)):
             raise UnsupportedMediaTypeError(
                 "Uploaded file is not an image.",
                 details={
-                    "suggestion": "Upload images to /blur or use /blur/video for videos.",
+                    "suggestion": (
+                        "Upload images to /blur or use /blur/video for videos."
+                    ),
                 },
             )
         allowed = settings.allowed_extensions_set()
@@ -287,7 +289,9 @@ async def submit_blur(request: Request, files: list[UploadFile] = File(...)):
                 "File extension does not match detected type.",
                 details={
                     "detected": detected_ext,
-                    "suggestion": f"Rename the file to .{detected_ext} or upload a matching file.",
+                    "suggestion": (
+                        f"Rename the file to .{detected_ext} or upload a matching file."
+                    ),
                 },
             )
         if len(data) > settings.max_upload_bytes():
@@ -364,7 +368,9 @@ async def submit_blur_video(request: Request, file: UploadFile = File(...)):
             "File extension does not match detected type.",
             details={
                 "detected": detected_ext,
-                "suggestion": f"Rename the file to .{detected_ext} or upload a matching file.",
+                "suggestion": (
+                    f"Rename the file to .{detected_ext} or upload a matching file."
+                ),
             },
         )
     if len(data) > settings.max_video_bytes():
@@ -480,7 +486,9 @@ async def fetch_result(request: Request, task_id: str):
         return Response(
             content=archive,
             media_type="application/zip",
-            headers={"Content-Disposition": 'attachment; filename="blurred_images.zip"'},
+            headers={
+                "Content-Disposition": 'attachment; filename="blurred_images.zip"'
+            },
         )
 
     if isinstance(return_value, dict) and return_value.get("type") == "video":

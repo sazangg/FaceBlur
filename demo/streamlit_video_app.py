@@ -46,10 +46,14 @@ upload = st.file_uploader(
 )
 
 video_bytes = None
+upload_name: str | None = None
+upload_type = "video/mp4"
 if upload:
     video_bytes = upload.getvalue()
     size_mb = len(video_bytes) / (1024 * 1024)
-    st.caption(f"Selected: {upload.name} ({size_mb:.1f} MB)")
+    upload_name = upload.name
+    upload_type = upload.type or "video/mp4"
+    st.caption(f"Selected: {upload_name} ({size_mb:.1f} MB)")
 
     if size_mb > MAX_VIDEO_MB:
         st.error(
@@ -58,11 +62,14 @@ if upload:
         video_bytes = None
 
 if video_bytes and st.button("Submit for blurring"):
+    if upload_name is None:
+        st.error("No video selected.")
+        st.stop()
     files_payload = {
         "file": (
-            upload.name,
+            upload_name,
             video_bytes,
-            upload.type or "video/mp4",
+            upload_type,
         )
     }
     response = httpx.post(f"{BACKEND_URL}/blur/video", files=files_payload, timeout=60)

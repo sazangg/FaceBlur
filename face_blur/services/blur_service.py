@@ -126,7 +126,9 @@ def _get_detector():
 
 
 def _detect_faces_in_frame(img: np.ndarray, scale: float = 1.0):
-    """Detect faces on a possibly downscaled frame and return boxes in original scale."""
+    """Detect faces on a possibly downscaled frame
+    and return boxes in original scale."""
+
     if img is None:
         raise ValueError("Could not decode image bytes")
     detector = _get_detector()

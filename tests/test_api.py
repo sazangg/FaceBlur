@@ -52,9 +52,10 @@ def test_blur_rejects_unsupported_extension():
 def test_blur_returns_task_id():
     app = create_app(broker_instance=DummyBroker(), task_submitter=fake_submitter)
     with TestClient(app) as client:
+        minimal_jpeg = b"\xff\xd8\xff" + b"\x00" * 16
         response = client.post(
             "/blur",
-            files={"files": ("sample.jpg", b"data", "image/jpeg")},
+            files={"files": ("sample.jpg", minimal_jpeg, "image/jpeg")},
         )
     assert response.status_code == 200
     payload = response.json()
