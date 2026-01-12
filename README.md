@@ -68,7 +68,7 @@ docker compose up -d
 
 ### Monitoring (Prometheus + Grafana)
 ```
-docker compose up -d prometheus grafana
+docker compose --profile monitoring up -d prometheus grafana
 ```
 
 Prometheus will scrape `http://localhost:8000/metrics` via `host.docker.internal`.
